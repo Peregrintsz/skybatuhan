@@ -20,6 +20,8 @@ repositories {
         name = "Quilt"
         url = "https://maven.quiltmc.org/repository/release/"
     }
+    maven { url = "https://maven.notenoughupdates.org/releases/"
+    }
     // Modrinth Maven
     exclusiveContent {
         forRepository {
@@ -40,12 +42,14 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-    // YACL (Modrinth - Version ID: DoR7RYgi)
-    implementation "maven.modrinth:1eAoo2KR:DoR7RYgi"
 
     // ModMenu
     compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
     runtimeOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+    //MoulConfig
+    implementation "org.notenoughupdates.moulconfig:modern-26.2:4.7.2"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.2.0"
 }
 
 processResources {

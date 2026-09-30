@@ -48,12 +48,12 @@ public class AutoFarmFeature extends Feature {
             return;
         }
 
-        if (currentPos.distanceTo(lastPos) > ConfigManager.config.safety.threshold) {
+        if (now - lastMovementTime > ConfigManager.config.farming.safety.timeoutMs) {
             lastMovementTime = now;
             lastPos = currentPos;
         }
 
-        if (now - lastMovementTime > ConfigManager.config.safety.timeoutMs) {
+        if (now - lastMovementTime > ConfigManager.config.farming.safety.timeoutMs) {
             if (!alarmTriggered) {
                 alarmTriggered = true;
                 playAlarm(client);
