@@ -4,6 +4,8 @@ import com.google.gson.annotations.Expose;
 import io.github.notenoughupdates.moulconfig.Config;
 import io.github.notenoughupdates.moulconfig.Social;
 import io.github.notenoughupdates.moulconfig.annotations.*;
+import io.github.notenoughupdates.moulconfig.common.ClickType;
+import io.github.notenoughupdates.moulconfig.common.IMinecraft;
 import io.github.notenoughupdates.moulconfig.common.MyResourceLocation;
 import io.github.notenoughupdates.moulconfig.common.text.StructuredText;
 import net.fabricmc.loader.api.FabricLoader;
@@ -14,13 +16,19 @@ import java.util.List;
 public class ModConfig extends Config {
     @Override
     public StructuredText getTitle() {
-        String version = FabricLoader.getInstance()
+        checkLatestVersion();
+        String installed = FabricLoader.getInstance()
                 .getModContainer("skybatuhan")
                 .map(c -> c.getMetadata().getVersion().getFriendlyString())
                 .orElse("?");
+        String latest = latestVersion;
+        String update = (latest != null && !latest.equals(installed))
+                ? " (v" + latest + " available)"
+                : "";
         return StructuredText.of("SkyBatuhan").aqua()
-                .append(StructuredText.of(" v" + version + " by ").grey())
-                .append(StructuredText.of("Lightre, Peregrints").red());
+                .append(StructuredText.of(" v" + installed + " by ").grey())
+                .append(StructuredText.of("Lightre, Peregrints").red())
+                .append(StructuredText.of(update).green());
     }
 
     @Override
@@ -41,9 +49,50 @@ public class ModConfig extends Config {
 
     private static void openLink(String url) {
         try {
-            java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
-        } catch (Exception ignored) {
+            String os = System.getProperty("os.name", "").toLowerCase();
+            if (os.contains("win")) {
+                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start();
+            } else if (os.contains("mac")) {
+                new ProcessBuilder("open", url).start();
+            } else {
+                new ProcessBuilder("xdg-open", url).start();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            IMinecraft.INSTANCE.sendClickableChatMessage(
+                    StructuredText.of("Click here to open the link"),
+                    url,
+                    ClickType.OPEN_LINK
+            );
         }
+    }
+
+    private static volatile String latestVersion = null;
+    private static boolean versionCheckStarted = false;
+
+    private static void checkLatestVersion() {
+        if (versionCheckStarted) return;
+        versionCheckStarted = true;
+        Thread t = new Thread(() -> {
+            try {
+                java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create("https://api.github.com/repos/lightre/skybatuhan/releases/latest"))
+                        .header("Accept", "application/vnd.github+json")
+                        .build();
+                java.net.http.HttpResponse<String> res =
+                        client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (res.statusCode() == 200) {
+                    String tag = com.google.gson.JsonParser.parseString(res.body())
+                            .getAsJsonObject().get("tag_name").getAsString();
+                    latestVersion = tag.startsWith("v") ? tag.substring(1) : tag;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, "SkyBatuhan-VersionCheck");
+        t.setDaemon(true);
+        t.start();
     }
 
     @Expose
@@ -59,13 +108,9 @@ public class ModConfig extends Config {
     public FishingCategory fishing = new FishingCategory();
 
     public static class AboutCategory {
-        @ConfigOption(name = "SkyBatuhan", desc = "Farming and fishing automation for Minecraft 26.2.")
-        @ConfigEditorInfoText
-        public transient String info = "";
-
-        @ConfigOption(name = "Authors", desc = "Lightre, Peregrints")
-        @ConfigEditorInfoText
-        public transient String authors = "";
+        @ConfigOption(name = "§a§lv" + com.lightre.skybatuhan.BuildInfo.VERSION, desc = "§7Changelog on GitHub")
+        @ConfigEditorButton(buttonText = "Open")
+        public transient Runnable changelog = () -> openLink("https://github.com/lightre/skybatuhan/releases");
 
         @Expose
         @Accordion
