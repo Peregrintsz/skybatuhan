@@ -1,6 +1,7 @@
 package com.lightre.skybatuhan.base;
 
 import com.google.gson.annotations.Expose;
+import com.lightre.skybatuhan.manager.DisconnectNotifier;
 import io.github.notenoughupdates.moulconfig.Config;
 import io.github.notenoughupdates.moulconfig.Social;
 import io.github.notenoughupdates.moulconfig.annotations.*;
@@ -106,6 +107,11 @@ public class ModConfig extends Config {
     @Expose
     @Category(name = "Fishing", desc = "Auto Fish settings")
     public FishingCategory fishing = new FishingCategory();
+
+    @Expose
+    @Category(name = "Disconnect", desc = "Discord notifications for disconnects and world changes")
+    public DisconnectCategory disconnect = new DisconnectCategory();
+
 
     public static class AboutCategory {
         @ConfigOption(name = "§a§lv" + com.lightre.skybatuhan.BuildInfo.VERSION, desc = "§7Changelog on GitHub")
@@ -273,5 +279,118 @@ public class ModConfig extends Config {
         @ConfigOption(name = "Action Slot", desc = "")
         @ConfigEditorDropdown(values = {"Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Slot 9"})
         public String actionSlot = "Slot 3";
+    }
+
+    public static class DisconnectCategory {
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Turn Discord notifications on or off")
+        @ConfigEditorBoolean
+        public boolean enabled = false;
+
+        @Expose
+        @ConfigOption(name = "Webhook URL", desc = "Discord channel webhook URL. Keep it private.")
+        @ConfigEditorText
+        public String webhookUrl = "";
+
+        @Expose
+        @ConfigOption(name = "Discord User ID", desc = "Your numeric ID, used to ping you")
+        @ConfigEditorText
+        public String discordUserId = "";
+
+        @Expose
+        @ConfigOption(name = "Notify On Disconnect", desc = "Message when the server kicks you or the connection drops")
+        @ConfigEditorBoolean
+        public boolean notifyDisconnect = true;
+
+        @Expose
+        @ConfigOption(name = "Notify On World Change", desc = "Message when you move to another world or dimension")
+        @ConfigEditorBoolean
+        public boolean notifyWorldChange = true;
+
+        @ConfigOption(name = "Send Test Message", desc = "Sends a test message to check the webhook")
+        @ConfigEditorButton(buttonText = "Send")
+        public Runnable sendTest = DisconnectNotifier::sendTest;
+        @Expose
+        @ConfigOption(name = "Reconnect for Farming", desc = "Leave, wait and rejoin after a disconnect or world change")
+        @Accordion
+        public ReconnectCategory reconnect = new ReconnectCategory();
+    }
+
+
+    public static class ReconnectCategory {
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Turn Reconnect for Farming on or off")
+        @ConfigEditorBoolean
+        public boolean enabled = false;
+
+        @Expose
+        @ConfigOption(name = "Server Address", desc = "Server to rejoin")
+        @ConfigEditorText
+        public String serverAddress = "eu.hypixel.net";
+
+        @Expose
+        @ConfigOption(name = "Trigger On Disconnect", desc = "Start when the server kicks you or the connection drops")
+        @ConfigEditorBoolean
+        public boolean onDisconnect = true;
+
+        @Expose
+        @ConfigOption(name = "Trigger On World Change", desc = "Leave the server when the world changes")
+        @ConfigEditorBoolean
+        public boolean onWorldChange = true;
+
+        @Expose
+        @ConfigOption(name = "Only While Farming", desc = "Do nothing if Auto Farm is off")
+        @ConfigEditorBoolean
+        public boolean onlyWhenActive = true;
+
+        @Expose
+        @ConfigOption(name = "Min Wait (s)", desc = "Shortest wait before the first reconnect")
+        @ConfigEditorSlider(minValue = 5f, maxValue = 300f, minStep = 1f)
+        public int minWaitSeconds = 30;
+
+        @Expose
+        @ConfigOption(name = "Max Wait (s)", desc = "Longest wait before the first reconnect")
+        @ConfigEditorSlider(minValue = 5f, maxValue = 300f, minStep = 1f)
+        public int maxWaitSeconds = 60;
+
+        @Expose
+        @ConfigOption(name = "Retry Wait (s)", desc = "Wait after a failed attempt")
+        @ConfigEditorSlider(minValue = 10f, maxValue = 300f, minStep = 1f)
+        public int retryWaitSeconds = 60;
+
+        @Expose
+        @ConfigOption(name = "Max Failed Attempts", desc = "Failed attempts allowed inside the time window before pausing")
+        @ConfigEditorSlider(minValue = 1f, maxValue = 10f, minStep = 1f)
+        public int maxAttempts = 3;
+
+        @Expose
+        @ConfigOption(name = "Attempt Memory (min)", desc = "How long failed attempts are remembered. After this the pause ends and it tries again")
+        @ConfigEditorSlider(minValue = 5f, maxValue = 240f, minStep = 5f)
+        public int attemptWindowMinutes = 60;
+
+        @Expose
+        @ConfigOption(name = "Settle Min (s)", desc = "Shortest wait after joining and after each command")
+        @ConfigEditorSlider(minValue = 3f, maxValue = 60f, minStep = 1f)
+        public int settleMinSeconds = 10;
+
+        @Expose
+        @ConfigOption(name = "Settle Max (s)", desc = "Longest wait after joining and after each command")
+        @ConfigEditorSlider(minValue = 3f, maxValue = 60f, minStep = 1f)
+        public int settleMaxSeconds = 15;
+
+        @Expose
+        @ConfigOption(name = "Join Command", desc = "First command after joining")
+        @ConfigEditorText
+        public String skyblockCommand = "/skyblock";
+
+        @Expose
+        @ConfigOption(name = "Warp Command", desc = "Second command, before Auto Farm starts. Leave empty to skip")
+        @ConfigEditorText
+        public String warpCommand = "/warp garden";
+
+        @Expose
+        @ConfigOption(name = "Resume Auto Farm", desc = "Turn Auto Farm back on at the end (only if it was on before)")
+        @ConfigEditorBoolean
+        public boolean resumeFarming = true;
     }
 }

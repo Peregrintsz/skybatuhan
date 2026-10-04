@@ -56,6 +56,10 @@ public class ConfigManager {
             config.fishing.minCastDelay = Math.max(config.fishing.minCastDelay, ModConfig.FishingCategory.MIN_CAST_DELAY_MS);
             config.fishing.maxCastDelay = Math.max(config.fishing.maxCastDelay, ModConfig.FishingCategory.MIN_CAST_DELAY_MS);
 
+            if (config.disconnect == null) config.disconnect = new ModConfig.DisconnectCategory();
+            if (config.disconnect == null) config.disconnect = new ModConfig.DisconnectCategory();
+            if (config.disconnect.reconnect == null) config.disconnect.reconnect = new ModConfig.ReconnectCategory();
+
             if (!existed) save();
 
         } catch (Exception e) {

@@ -110,6 +110,17 @@ public class ModuleManager {
         return fishFeature;
     }
 
+    public static void disableAll(Minecraft client) {
+        for (Feature f : features) {
+            if (f.isEnabled()) {
+                try {
+                    f.setState(client, false);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
 
     public static void openMenu() {
         if (ConfigManager.getManaged() == null) {
