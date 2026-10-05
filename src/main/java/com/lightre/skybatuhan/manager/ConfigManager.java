@@ -15,16 +15,12 @@ public class ConfigManager {
     public static ModConfig config = new ModConfig();
     private static ManagedConfig<ModConfig> managed;
 
+    private static boolean firstLoadDone = false;
+
     public static ManagedConfig<ModConfig> getManaged() {
-        if (managed == null) {
-            File file = new File(
-                    net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().toFile(),
-                    "config.json" // senin mevcut dosya adın neyse onu yaz
-            );
-            managed = ManagedConfig.create(file, ModConfig.class);
-        }
         return managed;
     }
+
     public static void load() {
         boolean existed = CONFIG_FILE.exists();
 
@@ -57,8 +53,18 @@ public class ConfigManager {
             config.fishing.maxCastDelay = Math.max(config.fishing.maxCastDelay, ModConfig.FishingCategory.MIN_CAST_DELAY_MS);
 
             if (config.disconnect == null) config.disconnect = new ModConfig.DisconnectCategory();
-            if (config.disconnect == null) config.disconnect = new ModConfig.DisconnectCategory();
             if (config.disconnect.reconnect == null) config.disconnect.reconnect = new ModConfig.ReconnectCategory();
+
+            if (!firstLoadDone) {
+                // Features must never start by themselves when the game launches
+                config.farming.autoFarmEnabled = false;
+                config.fishing.autoFishEnabled = false;
+                firstLoadDone = true;
+            } else {
+                // Reload: keep the real on/off state, otherwise the menu sync would switch the features off
+                config.farming.autoFarmEnabled = ModuleManager.getFarmFeature().isEnabled();
+                config.fishing.autoFishEnabled = ModuleManager.getFishFeature().isEnabled();
+            }
 
             if (!existed) save();
 

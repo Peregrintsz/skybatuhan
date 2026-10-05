@@ -29,6 +29,9 @@ import java.util.concurrent.ThreadLocalRandom;
  *  - failed attempts are remembered for a rolling time window (default 1 hour).
  *    When the limit is reached it pauses until the oldest failure falls out of the window,
  *    then keeps trying.
+ *
+ * Whenever the player leaves a game (kick, manual quit), Auto Farm is switched off.
+ * If it was on, that is remembered (farmOnAtLeave) so a kick can still resume it.
  */
 public class ReconnectManager {
     private enum State {
@@ -43,6 +46,7 @@ public class ReconnectManager {
 
     private static final long QUICK_KICK_MS = 5 * 60 * 1000L;     // kicked again this soon after resuming = failed attempt
     private static final long WORLD_CHANGE_GRACE_MS = 20_000L;    // ignore world changes right after resuming
+    private static final long HOME_COMMAND_GRACE_MS = 20_000L;   // ignore world changes right after Auto Farm's /home
     private static final long CONNECT_TIMEOUT_MS = 90_000L;
     private static final long DISCONNECT_WINDOW_MS = 5000L;
 
@@ -52,6 +56,9 @@ public class ReconnectManager {
     private static boolean farmWasEnabled = false;
     private static long lastResumeAt = 0L;
     private static long ignoreWorldChangeUntil = 0L;
+
+    // Auto Farm was on when the player left the game (Auto Farm is switched off at that moment)
+    private static boolean farmOnAtLeave = false;
 
     // timestamps of failed attempts, oldest first
     private static final Deque<Long> failureTimes = new ArrayDeque<>();
@@ -70,6 +77,11 @@ public class ReconnectManager {
 
             boolean wasInGame = inGame;
             inGame = true;
+
+            if (!wasInGame) {
+                // A fresh join: whatever Auto Farm was doing before leaving is history
+                farmOnAtLeave = false;
+            }
 
             if (wasInGame) {
                 onWorldChange(client);
@@ -90,9 +102,15 @@ public class ReconnectManager {
     // ================= EVENTS =================
 
     private static void markLeftGame() {
-        if (inGame) {
-            inGame = false;
-            leftGameAt = System.currentTimeMillis();
+        if (!inGame) return;
+
+        inGame = false;
+        leftGameAt = System.currentTimeMillis();
+
+        // Not while recovering: Reconnect handles Auto Farm itself in that case
+        if (state == State.IDLE) {
+            farmOnAtLeave = ModuleManager.getFarmFeature().isEnabled();
+            stopFarm(Minecraft.getInstance());
         }
     }
 
@@ -100,7 +118,10 @@ public class ReconnectManager {
         ModConfig.ReconnectCategory cfg = ConfigManager.config.disconnect.reconnect;
         if (!cfg.enabled || !cfg.onWorldChange) return;
         if (state != State.IDLE) return; // world changes are expected while recovering
-        if (System.currentTimeMillis() < ignoreWorldChangeUntil) return;
+        long now = System.currentTimeMillis();
+        if (now < ignoreWorldChangeUntil) return;
+        // Auto Farm's own /home command can change the world: that is not a reason to leave
+        if (now - ModuleManager.getFarmFeature().getLastHomeCommandAt() < HOME_COMMAND_GRACE_MS) return;
 
         beginRecovery(client, "World changed", true);
     }
@@ -143,7 +164,9 @@ public class ReconnectManager {
         ModConfig.ReconnectCategory cfg = ConfigManager.config.disconnect.reconnect;
         long now = System.currentTimeMillis();
 
-        boolean farmOn = ModuleManager.getFarmFeature().isEnabled();
+        // Auto Farm may already have been switched off when the connection dropped
+        boolean farmOn = ModuleManager.getFarmFeature().isEnabled() || farmOnAtLeave;
+        farmOnAtLeave = false;
         if (cfg.onlyWhenActive && !farmOn) return;
 
         farmWasEnabled = farmOn;

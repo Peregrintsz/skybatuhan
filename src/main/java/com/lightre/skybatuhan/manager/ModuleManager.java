@@ -11,9 +11,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 import io.github.notenoughupdates.moulconfig.common.IMinecraft;
-import io.github.notenoughupdates.moulconfig.managed.ManagedConfig;
-import net.fabricmc.loader.api.FabricLoader;
-import java.io.File;
 import com.lightre.skybatuhan.base.ModConfig;
 
 import java.util.ArrayList;
@@ -55,10 +52,7 @@ public class ModuleManager {
 
     public static void onTick(Minecraft client) {
         if (client.player == null) return;
-        while (menuKey.consumeClick()) {
-            System.out.println("[SkyBatuhan] menu key pressed");
-            openMenu();
-        }
+        while (menuKey.consumeClick()) openMenu();
         if (menuOpen && client.gui.screen() == null) {
             menuOpen = false;
             ConfigManager.save();
@@ -89,7 +83,6 @@ public class ModuleManager {
 
         while (addPointKey.consumeClick()) farmFeature.addWaypoint(client);
         while (setHomeKey.consumeClick()) farmFeature.setHomePoint(client);
-        while (menuKey.consumeClick()) openMenu();
     }
 
     private static void register() {

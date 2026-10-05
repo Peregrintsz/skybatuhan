@@ -166,8 +166,8 @@ public class ModConfig extends Config {
 
         @Expose
         @ConfigOption(name = "Threshold", desc = "Safety threshold")
-        @ConfigEditorSlider(minValue = 0f, maxValue = 1f, minStep = 0.5f)
-        public float threshold = 0.1f;
+        @ConfigEditorSlider(minValue = 0f, maxValue = 1f, minStep = 0.1f)
+        public double threshold = 0.1;
     }
 
     public static class FarmingCategory {
@@ -195,8 +195,8 @@ public class ModConfig extends Config {
     public static class GeneralSettings {
         @Expose
         @ConfigOption(name = "Point Range", desc = "Waypoint reach range")
-        @ConfigEditorSlider(minValue = 0f, maxValue = 3f, minStep = 0.5f)
-        public double pointRange = 0.1f;
+        @ConfigEditorSlider(minValue = 0f, maxValue = 3f, minStep = 0.1f)
+        public double pointRange = 0.1;
 
         @Expose
         @ConfigOption(name = "Attack Enabled", desc = "Attack nearby targets while farming")
@@ -309,7 +309,8 @@ public class ModConfig extends Config {
 
         @ConfigOption(name = "Send Test Message", desc = "Sends a test message to check the webhook")
         @ConfigEditorButton(buttonText = "Send")
-        public Runnable sendTest = DisconnectNotifier::sendTest;
+        public transient Runnable sendTest = DisconnectNotifier::sendTest;
+
         @Expose
         @ConfigOption(name = "Reconnect for Farming", desc = "Leave, wait and rejoin after a disconnect or world change")
         @Accordion

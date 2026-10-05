@@ -50,20 +50,22 @@ dependencies {
     //MoulConfig
     implementation "org.notenoughupdates.moulconfig:modern-26.2:4.7.2"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:2.2.0"
+
+    // Jar-in-jar: ship MoulConfig and Kotlin inside the mod jar (the include configuration is not transitive)
+    include "org.notenoughupdates.moulconfig:modern-26.2:4.7.2"
+    include "org.jetbrains.kotlin:kotlin-stdlib:2.2.0"
 }
 
 processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
-    inputs.property "yacl_version", project.yacl_version
     inputs.property "modmenu_version", project.modmenu_version
 
     filesMatching("fabric.mod.json") {
         expand "version": inputs.properties.version,
                 "minecraft_version": inputs.properties.minecraft_version,
                 "loader_version": inputs.properties.loader_version,
-                "yacl_version": project.yacl_version,
                 "modmenu_version": project.modmenu_version
     }
 }
