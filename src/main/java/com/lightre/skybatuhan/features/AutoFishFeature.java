@@ -9,6 +9,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.network.chat.Component;
 
@@ -29,12 +30,15 @@ public class AutoFishFeature extends Feature {
 
     private static final long ACTION_SLOT_MIN_DELAY_MS = 25L;
     private static final long ACTION_SLOT_MAX_DELAY_MS = 75L;
+    private static final long CLICK_MIN_DELAY_MS = 700L;
+    private static final long CLICK_MAX_DELAY_MS = 1000L;
+    private static final int MAX_CLICKS = 50;
     private static final long ENTITY_RECOVERY_MIN_MS = 25L;
     private static final long ENTITY_RECOVERY_MAX_MS = 75L;
-    private static final double ENTITY_CHECK_RADIUS = 2.0;
-    private static final long ENTITY_WAIT_MIN_MS = 1000L;
-    private static final long ENTITY_WAIT_MAX_MS = 2000L;
+    private static final long ENTITY_RECOVERY_TIMEOUT_MS = 5000L;
+    private static final double SKYBLOCK_MARKER_RADIUS_SQUARED = 9.0; // 3 blocks around the bobber
     private long lastEntityHookTime = 0L;
+    private volatile boolean entityRecoveryPending = false;
     private int pendingRestoreSlot = -1;
 
     public AutoFishFeature() {
@@ -105,7 +109,7 @@ public class AutoFishFeature extends Feature {
                     if (shouldUseActionSlot()) {
                         scheduleActionSlot(client, finalHand, gen, actualMinCast, actualMaxCast);
                     } else {
-                        scheduleRecast(client, finalHand, gen, actualMinCast, actualMaxCast);
+                        continueAfterReel(client, finalHand, gen, actualMinCast, actualMaxCast);
                     }
                 });
             }
@@ -120,6 +124,8 @@ public class AutoFishFeature extends Feature {
             if (client.player != null && client.gameMode != null) {
                 client.execute(() -> {
                     if (!this.isEnabled() || gen != generation.get()) return;
+
+                    entityRecoveryPending = false;
 
                     var p2 = client.player;
                     var gm2 = client.gameMode;
@@ -141,7 +147,11 @@ public class AutoFishFeature extends Feature {
     }
 
     private int parseActionSlot() {
-        String digits = ConfigManager.config.fishing.actionSlot.replaceAll("[^0-9]", "");
+        return parseSlot(ConfigManager.config.fishing.actionSlot);
+    }
+
+    private int parseSlot(String value) {
+        String digits = value == null ? "" : value.replaceAll("[^0-9]", "");
         if (digits.isEmpty()) return 0;
         int slot = Integer.parseInt(digits) - 1;
         return Math.max(0, Math.min(8, slot));
@@ -192,7 +202,80 @@ public class AutoFishFeature extends Feature {
         if (!this.isEnabled() || gen != generation.get()) return;
 
         System.out.println("[AutoFish] Returned to rod slot");
-        scheduleRecast(client, finalHand, gen, actualMinCast, actualMaxCast);
+        continueAfterReel(client, finalHand, gen, actualMinCast, actualMaxCast);
+    }
+
+    // ================= CLICK SLOT =================
+    // After reeling (and the action slot, if enabled): switch to the click slot,
+    // left click N times (arm swing), switch back and recast.
+    private void continueAfterReel(Minecraft client, InteractionHand finalHand, int gen, long actualMinCast, long actualMaxCast) {
+        if (shouldUseClickSlot()) {
+            scheduleClickSlot(client, finalHand, gen, actualMinCast, actualMaxCast);
+        } else {
+            scheduleRecast(client, finalHand, gen, actualMinCast, actualMaxCast);
+        }
+    }
+
+    private boolean shouldUseClickSlot() {
+        return ConfigManager.config.fishing.useClickSlot && ConfigManager.config.fishing.clickSlot != null;
+    }
+
+    private int clickCount() {
+        int clicks = (int) Math.round(ConfigManager.config.fishing.clickCount);
+        return Math.max(1, Math.min(MAX_CLICKS, clicks));
+    }
+
+    private void scheduleClickSlot(Minecraft client, InteractionHand finalHand, int gen, long actualMinCast, long actualMaxCast) {
+        int targetSlot = parseSlot(ConfigManager.config.fishing.clickSlot);
+        int clicks = clickCount();
+        long switchDelay = ThreadLocalRandom.current().nextLong(ACTION_SLOT_MIN_DELAY_MS, ACTION_SLOT_MAX_DELAY_MS + 1);
+
+        threadScheduler.schedule(() -> client.execute(() -> {
+            if (!this.isEnabled() || gen != generation.get()) return;
+
+            var player = client.player;
+            if (player == null) return;
+
+            int originalSlot = player.getInventory().getSelectedSlot();
+            pendingRestoreSlot = originalSlot;
+            player.getInventory().setSelectedSlot(targetSlot);
+            System.out.println("[AutoFish] Click slot activated, clicks: " + clicks);
+
+            clickStep(client, finalHand, gen, originalSlot, clicks, actualMinCast, actualMaxCast);
+        }), switchDelay, TimeUnit.MILLISECONDS);
+    }
+
+    // Same as a vanilla left click: hit the entity under the crosshair (if any), then swing
+    private void leftClick(Minecraft client) {
+        var player = client.player;
+        var gameMode = client.gameMode;
+        if (player == null) return;
+
+        if (gameMode != null && client.hitResult instanceof EntityHitResult entityHit) {
+            gameMode.attack(player, entityHit.getEntity());
+        }
+        player.swing(InteractionHand.MAIN_HAND);
+    }
+
+    private void clickStep(Minecraft client, InteractionHand finalHand, int gen, int originalSlot, int clicksLeft, long actualMinCast, long actualMaxCast) {
+        long delay = ThreadLocalRandom.current().nextLong(CLICK_MIN_DELAY_MS, CLICK_MAX_DELAY_MS + 1);
+
+        threadScheduler.schedule(() -> client.execute(() -> {
+            if (!this.isEnabled() || gen != generation.get()) return;
+
+            var player = client.player;
+            if (player == null) return;
+
+            if (clicksLeft > 0) {
+                leftClick(client);
+                clickStep(client, finalHand, gen, originalSlot, clicksLeft - 1, actualMinCast, actualMaxCast);
+            } else {
+                player.getInventory().setSelectedSlot(originalSlot);
+                pendingRestoreSlot = -1;
+                System.out.println("[AutoFish] Click slot done, back to rod slot");
+                scheduleRecast(client, finalHand, gen, actualMinCast, actualMaxCast);
+            }
+        }), delay, TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -205,15 +288,17 @@ public class AutoFishFeature extends Feature {
         String currentMode = ConfigManager.config.fishing.fishMode;
 
         // ================= SKYBLOCK MODE =================
-        if ("Skyblock".equalsIgnoreCase(currentMode)) {
+        // The rod must be in the water, and the "!!!" marker must be right next to the bobber
+        if ("Skyblock".equalsIgnoreCase(currentMode) && client.player.fishing != null) {
             long now = System.currentTimeMillis();
             if (now - lastSkyblockClickTime > 3000) {
+                Entity bobber = client.player.fishing;
                 for (Entity entity : client.level.entitiesForRendering()) {
                     if (entity instanceof ArmorStand || entity.getType().toString().contains("armor_stand")) {
                         if (entity.hasCustomName() && entity.getCustomName() != null) {
                             String nameString = entity.getCustomName().getString();
-                            if (nameString.contains("!") || nameString.contains("§c!")) {
-                                System.out.println("[AutoFish] Skyblock ArmorStand '!' detected! Triggering organic loop...");
+                            if (nameString.contains("!!!") && entity.distanceToSqr(bobber) <= SKYBLOCK_MARKER_RADIUS_SQUARED) {
+                                System.out.println("[AutoFish] Skyblock ArmorStand '!!!' detected near bobber! Triggering organic loop...");
                                 lastSkyblockClickTime = now;
                                 onFishHooked(client);
                                 break;
@@ -238,6 +323,7 @@ public class AutoFishFeature extends Feature {
     @Override
     public void onToggle(Minecraft client, boolean state) {
         int gen = generation.incrementAndGet();
+        entityRecoveryPending = false;
         if (state) {
             lastHookTime = System.currentTimeMillis();
             lastSkyblockClickTime = 0;
@@ -261,7 +347,9 @@ public class AutoFishFeature extends Feature {
         if (!isEntityHooked(client)) return;
 
         long now = System.currentTimeMillis();
-        if (now - lastEntityHookTime <= 75L) return;
+        // One recovery at a time: it stays pending until the recast is done (5s safety limit)
+        if (entityRecoveryPending && now - lastEntityHookTime < ENTITY_RECOVERY_TIMEOUT_MS) return;
+        entityRecoveryPending = true;
         lastEntityHookTime = now;
 
         final int gen = generation.get();
@@ -272,17 +360,26 @@ public class AutoFishFeature extends Feature {
     }
 
     private void recoverFromEntityHook(Minecraft client, int gen) {
-        if (!this.isEnabled() || gen != generation.get()) return;
+        if (!this.isEnabled() || gen != generation.get()) {
+            entityRecoveryPending = false;
+            return;
+        }
 
         var player = client.player;
         var gameMode = client.gameMode;
-        if (player == null || gameMode == null) return;
+        if (player == null || gameMode == null) {
+            entityRecoveryPending = false;
+            return;
+        }
 
         InteractionHand hand = player.getMainHandItem().is(Items.FISHING_ROD) ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND;
 
-        gameMode.useItem(player, hand);
-        player.swing(hand);
-        System.out.println("[AutoFish] Recovered from entity hook");
+        // Only reel in if the bobber is still out, otherwise this click would cast it again
+        if (player.fishing != null) {
+            gameMode.useItem(player, hand);
+            player.swing(hand);
+            System.out.println("[AutoFish] Recovered from entity hook");
+        }
 
         ModConfig.FishingCategory fishConfig = ConfigManager.config.fishing;
         long lowCast = Math.min((long) fishConfig.minCastDelay, (long) fishConfig.maxCastDelay);
@@ -290,31 +387,7 @@ public class AutoFishFeature extends Feature {
         long minCast = Math.max(ModConfig.FishingCategory.MIN_CAST_DELAY_MS, lowCast);
         long maxCast = Math.max(ModConfig.FishingCategory.MIN_CAST_DELAY_MS, highCast);
 
-        if (hasNearbyEntities(client)) {
-            System.out.println("[AutoFish] Entities nearby, waiting before recast...");
-            long waitDelay = ThreadLocalRandom.current().nextLong(ENTITY_WAIT_MIN_MS, ENTITY_WAIT_MAX_MS + 1);
-            threadScheduler.schedule(() -> client.execute(() -> {
-                if (!this.isEnabled() || gen != generation.get()) return;
-                scheduleRecast(client, hand, gen, minCast, maxCast);
-            }), waitDelay, TimeUnit.MILLISECONDS);
-        } else {
-            System.out.println("[AutoFish] No entities nearby, continuing...");
-            scheduleRecast(client, hand, gen, minCast, maxCast);
-        }
-    }
-
-    private boolean hasNearbyEntities(Minecraft client) {
-        if (client.player == null || client.level == null) return false;
-        double radiusSquared = ENTITY_CHECK_RADIUS * ENTITY_CHECK_RADIUS;
-
-        for (Entity entity : client.level.entitiesForRendering()) {
-            if (entity != client.player && !(entity instanceof ArmorStand)) {
-                if (client.player.distanceToSqr(entity) < radiusSquared) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        scheduleRecast(client, hand, gen, minCast, maxCast);
     }
 
     // ================= INITIAL CAST =================

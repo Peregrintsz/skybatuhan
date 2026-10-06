@@ -279,6 +279,31 @@ public class ModConfig extends Config {
         @ConfigOption(name = "Action Slot", desc = "")
         @ConfigEditorDropdown(values = {"Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Slot 9"})
         public String actionSlot = "Slot 3";
+
+        @Expose
+        @ConfigOption(name = "Enable Click Slot", desc = "After reeling, switch to a slot, left click, then go back to fishing")
+        @ConfigEditorBoolean
+        public boolean useClickSlot = false;
+
+        @Expose
+        @ConfigOption(name = "Click Slot", desc = "")
+        @ConfigEditorDropdown(values = {"Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Slot 9"})
+        public String clickSlot = "Slot 4";
+
+        @Expose
+        @ConfigOption(name = "Click Count", desc = "How many left clicks")
+        @ConfigEditorSlider(minValue = 1f, maxValue = 20f, minStep = 1f)
+        public double clickCount = 3.0;
+
+        @Expose
+        @ConfigOption(name = "Min Click Delay (ms)", desc = "Shortest wait between clicks")
+        @ConfigEditorSlider(minValue = 50f, maxValue = 2000f, minStep = 10f)
+        public double minClickDelay = 700.0;
+
+        @Expose
+        @ConfigOption(name = "Max Click Delay (ms)", desc = "Longest wait between clicks")
+        @ConfigEditorSlider(minValue = 50f, maxValue = 2000f, minStep = 10f)
+        public double maxClickDelay = 1000.0;
     }
 
     public static class DisconnectCategory {

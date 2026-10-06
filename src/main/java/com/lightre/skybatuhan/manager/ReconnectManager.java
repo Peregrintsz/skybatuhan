@@ -48,6 +48,13 @@ public class ReconnectManager {
     private static final long WORLD_CHANGE_GRACE_MS = 20_000L;    // ignore world changes right after resuming
     private static final long HOME_COMMAND_GRACE_MS = 20_000L;   // ignore world changes right after Auto Farm's /home
     private static final long CONNECT_TIMEOUT_MS = 90_000L;
+
+    // Fixed waits (seconds). A random value between min and max is used each time.
+    private static final int WAIT_MIN_SECONDS = 30;    // before the first reconnect
+    private static final int WAIT_MAX_SECONDS = 60;
+    private static final int RETRY_WAIT_SECONDS = 60;  // after a failed attempt
+    private static final int SETTLE_MIN_SECONDS = 10;  // after joining and after each command
+    private static final int SETTLE_MAX_SECONDS = 15;
     private static final long DISCONNECT_WINDOW_MS = 5000L;
 
     private static State state = State.IDLE;
@@ -77,6 +84,7 @@ public class ReconnectManager {
 
             boolean wasInGame = inGame;
             inGame = true;
+            log("Level change event (already in game: " + wasInGame + ")");
 
             if (!wasInGame) {
                 // A fresh join: whatever Auto Farm was doing before leaving is history
@@ -116,13 +124,26 @@ public class ReconnectManager {
 
     private static void onWorldChange(Minecraft client) {
         ModConfig.ReconnectCategory cfg = ConfigManager.config.disconnect.reconnect;
-        if (!cfg.enabled || !cfg.onWorldChange) return;
-        if (state != State.IDLE) return; // world changes are expected while recovering
+        if (!cfg.enabled || !cfg.onWorldChange) {
+            log("World change ignored: Reconnect or 'Trigger On World Change' is off");
+            return;
+        }
+        if (state != State.IDLE) { // world changes are expected while recovering
+            log("World change ignored: state is " + state);
+            return;
+        }
         long now = System.currentTimeMillis();
-        if (now < ignoreWorldChangeUntil) return;
+        if (now < ignoreWorldChangeUntil) {
+            log("World change ignored: grace time after resuming");
+            return;
+        }
         // Auto Farm's own /home command can change the world: that is not a reason to leave
-        if (now - ModuleManager.getFarmFeature().getLastHomeCommandAt() < HOME_COMMAND_GRACE_MS) return;
+        if (now - ModuleManager.getFarmFeature().getLastHomeCommandAt() < HOME_COMMAND_GRACE_MS) {
+            log("World change ignored: caused by Auto Farm's /home");
+            return;
+        }
 
+        log("World change detected, starting recovery");
         beginRecovery(client, "World changed", true);
     }
 
@@ -167,7 +188,10 @@ public class ReconnectManager {
         // Auto Farm may already have been switched off when the connection dropped
         boolean farmOn = ModuleManager.getFarmFeature().isEnabled() || farmOnAtLeave;
         farmOnAtLeave = false;
-        if (cfg.onlyWhenActive && !farmOn) return;
+        if (cfg.onlyWhenActive && !farmOn) {
+            log(reason + ": skipped, Auto Farm is off ('Only While Farming' is on)");
+            return;
+        }
 
         farmWasEnabled = farmOn;
 
@@ -190,7 +214,7 @@ public class ReconnectManager {
             return;
         }
 
-        long waitMs = randomMs(cfg.minWaitSeconds, cfg.maxWaitSeconds);
+        long waitMs = randomMs(WAIT_MIN_SECONDS, WAIT_MAX_SECONDS);
         schedule(State.WAIT_BEFORE_CONNECT, waitMs);
         String text = reason + ". Reconnecting in " + waitMs / 1000 + "s (attempt " + attemptNumber() + "/" + cfg.maxAttempts + ").";
         log(text);
@@ -212,7 +236,7 @@ public class ReconnectManager {
             return;
         }
 
-        long waitMs = Math.max(1, cfg.retryWaitSeconds) * 1000L;
+        long waitMs = RETRY_WAIT_SECONDS * 1000L;
         schedule(State.WAIT_BEFORE_CONNECT, waitMs);
         String text = reason + ". Retrying in " + waitMs / 1000 + "s (attempt " + attemptNumber() + "/" + cfg.maxAttempts + ").";
         log(text);
@@ -318,7 +342,7 @@ public class ReconnectManager {
             }
             case CONNECTING -> {
                 if (inGame && client.player != null) {
-                    schedule(State.WAIT_AFTER_JOIN, randomMs(cfg.settleMinSeconds, cfg.settleMaxSeconds));
+                    schedule(State.WAIT_AFTER_JOIN, randomMs(SETTLE_MIN_SECONDS, SETTLE_MAX_SECONDS));
                     log("Joined, waiting before the skyblock command.");
                 } else if (now - connectStartedAt > CONNECT_TIMEOUT_MS) {
                     onAttemptFailed(client, "Connection timed out");
@@ -328,7 +352,7 @@ public class ReconnectManager {
                 if (!connectedAfterJoin(client, now)) return;
                 if (now >= nextActionAt) {
                     sendCommand(client, cfg.skyblockCommand);
-                    schedule(State.WAIT_AFTER_SKYBLOCK, randomMs(cfg.settleMinSeconds, cfg.settleMaxSeconds));
+                    schedule(State.WAIT_AFTER_SKYBLOCK, randomMs(SETTLE_MIN_SECONDS, SETTLE_MAX_SECONDS));
                 }
             }
             case WAIT_AFTER_SKYBLOCK -> {
@@ -338,7 +362,7 @@ public class ReconnectManager {
                         finishRecovery(client, cfg);
                     } else {
                         sendCommand(client, cfg.warpCommand);
-                        schedule(State.WAIT_AFTER_WARP, randomMs(cfg.settleMinSeconds, cfg.settleMaxSeconds));
+                        schedule(State.WAIT_AFTER_WARP, randomMs(SETTLE_MIN_SECONDS, SETTLE_MAX_SECONDS));
                     }
                 }
             }

@@ -19,7 +19,11 @@
 
 ## Features
 
+## Features
+
 - Customizable Auto-Farming and Auto-Fishing feature.
+- Reconnect for Farming: rejoins after a kick or world change, runs your join and warp commands, then resumes Auto Farm.
+- Discord notifications for disconnects and world changes while farming or fishing.
 
 ## Prerequisites
 

@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lightre.skybatuhan.base.ModConfig;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLevelEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.multiplayer.ServerData;
@@ -26,6 +27,9 @@ import java.util.regex.Pattern;
  * Sends a Discord webhook message (pinging the configured user) when:
  *  - the player is kicked / loses the connection (a DisconnectedScreen appears), or
  *  - the client level changes while still connected (world change).
+ *
+ * Only while Auto Farm or Auto Fish is on. Messages sent through send() directly
+ * (test message, Reconnect for Farming updates) are not filtered.
  */
 public class DisconnectNotifier {
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -48,6 +52,11 @@ public class DisconnectNotifier {
     private static long lastWorldChangeNotify = 0L;
     private static String lastServer = "unknown";
 
+    // Auto Farm or Auto Fish was on during the last tick. Other managers may switch the
+    // features off while leaving the game, so the state is remembered from before that.
+    private static boolean activeLastTick = false;
+    private static boolean activeAtLeave = false;
+
     public static void init() {
         // Fires on login, world change and when the level goes away (disconnect)
         ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register((client, level) -> {
@@ -67,6 +76,12 @@ public class DisconnectNotifier {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> markLeftGame());
 
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.player != null) {
+                activeLastTick = featuresActive();
+            }
+        });
+
         // The kick/connection-lost screen: read the text the player would see
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof DisconnectedScreen) {
@@ -75,8 +90,13 @@ public class DisconnectNotifier {
         });
     }
 
+    private static boolean featuresActive() {
+        return ModuleManager.getFarmFeature().isEnabled() || ModuleManager.getFishFeature().isEnabled();
+    }
+
     private static void markLeftGame() {
         if (inGame) {
+            activeAtLeave = activeLastTick || featuresActive();
             inGame = false;
             leftGameAt = System.currentTimeMillis();
         }
@@ -85,6 +105,7 @@ public class DisconnectNotifier {
     private static void onWorldChange() {
         ModConfig.DisconnectCategory cfg = ConfigManager.config.disconnect;
         if (!cfg.enabled || !cfg.notifyWorldChange) return;
+        if (!(activeLastTick || featuresActive())) return; // only while Auto Farm / Auto Fish is on
 
         long now = System.currentTimeMillis();
         if (now - lastWorldChangeNotify < WORLD_CHANGE_COOLDOWN_MS) return;
@@ -105,9 +126,13 @@ public class DisconnectNotifier {
         boolean wasInGame = inGame || (leftGameAt != 0L && now - leftGameAt < DISCONNECT_WINDOW_MS);
         if (!wasInGame) return;
 
+        boolean active = inGame ? (activeLastTick || featuresActive()) : activeAtLeave;
+
         lastNotifiedScreen = screen;
         inGame = false;
         leftGameAt = 0L;
+
+        if (!active) return; // only report disconnects that happen while Auto Farm / Auto Fish is on
 
         send("**Disconnected** from `" + lastServer + "`:\n" + readScreenText(screen));
     }
